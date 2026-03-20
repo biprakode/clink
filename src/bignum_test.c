@@ -198,6 +198,63 @@ void test_modexp() {
     check_hex(&r, "000000000000002a", "2^79 mod 101 = 42");
 }
 
+
+void test_hex_conversion() {
+    printf("\n[hex conversion tests]\n");
+    BigNum n;
+    char out_buf[1024];
+
+    // --- Test 1: Single limb small value ---
+    const char *hex1 = "000000000000000a"; // 10 decimal
+    bignum_from_hex(&n, hex1);
+    bignum_to_hex(&n, out_buf);
+
+    if (n.limbs[0] == 10 && n.size == 1) {
+        printf("  PASS: Single limb conversion (Value: %llu)\n", n.limbs[0]);
+    } else {
+        printf("  FAIL: Single limb conversion. Got size %d, limb[0] %llu\n", n.size, n.limbs[0]);
+    }
+
+    // --- Test 2: Multi-limb round trip ---
+    // This tests if limbs are stored in the correct order (Little Endian limbs)
+    const char *hex2 = "00000000000000010000000000000002";
+    bignum_from_hex(&n, hex2);
+    bignum_to_hex(&n, out_buf);
+
+    if (strcmp(out_buf, hex2) == 0) {
+        printf("  PASS: Multi-limb round trip\n");
+    } else {
+        printf("  FAIL: Multi-limb round trip.\n  Want: %s\n  Got : %s\n", hex2, out_buf);
+    }
+
+    // --- Test 3: Large value (3 limbs) ---
+    const char *hex3 = "deadbeefdeadbeefcafebabecafebabebad1ad1bad1ad1ba";
+    bignum_from_hex(&n, hex3);
+    bignum_to_hex(&n, out_buf);
+
+    // Note: your to_hex uses %016llx, so it might add leading zeros if the
+    // original string wasn't a perfect multiple of 16. Adjusting comparison:
+    if (strstr(out_buf, "deadbeefdeadbeefcafebabecafebabebad1ad1bad1ad1ba")) {
+        printf("  PASS: Large 3-limb conversion\n");
+    } else {
+        printf("  FAIL: Large 3-limb conversion. Got: %s\n", out_buf);
+    }
+}
+
+void test_print() {
+    printf("\n[print test - visual check]\n");
+    BigNum n;
+    // 0xDE...BE in limb 1, 0xCA...BE in limb 0
+    n.size = 2;
+    n.limbs[1] = 0xDEADBEEFDEADBEEF;
+    n.limbs[0] = 0xCAFEBABECAFEBABE;
+
+    printf("Expected: 0xdeadbeefdeadbeefcafebabecafebab\n");
+    printf("Actual:   ");
+    bignum_print(&n);
+    printf("\n");
+}
+
 // ── main ──────────────────────────────────────────────────────
 int main(void) {
     printf("=== bignum tests ===");
@@ -208,6 +265,27 @@ int main(void) {
     test_mod();
     test_barrett();
     test_modexp();
+    test_hex_conversion();
+    test_print();
+
+    static const char *prime = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+    "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+    "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+    "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
+    "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D"
+    "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F"
+    "83655D23DCA3AD961C62F356208552BB9ED529077096966D"
+    "670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B"
+    "E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9"
+    "DE2BCBF6955817183995497CEA956AE515D2261898FA0510"
+    "15728E5A8AACAA68FFFFFFFFFFFFFFFF";
+
+    BigNum p;
+    bignum_from_hex(&p, prime);
+    char buf[1024];
+    bignum_to_hex(&p, buf);
+    printf("%s\n", buf);
+
 
     printf("\n%d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

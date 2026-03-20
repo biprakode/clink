@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MAX_LIMBS 16
+#define MAX_LIMBS 128
 
 typedef struct {
     uint64_t limbs[MAX_LIMBS];
@@ -27,6 +27,7 @@ void bignum_copy(BigNum *r, const BigNum *a);
 void bignum_from_hex(BigNum *r, const char *hex);
 void bignum_to_hex(const BigNum *r, char *hex);
 void bignum_print(const BigNum *r);
+void bignum_from_bytes(BigNum *r , const uint8_t *raw , int len);
 
 /* --- Comparison & Information --- */
 int bignum_cmp(const BigNum *a, const BigNum *b);

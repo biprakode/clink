@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-# define MAX_LIMBS 16
-
 void bignum_trim(BigNum *r) {
     while (r->size > 1 && r->limbs[r->size - 1] == 0)
         r->size--;
@@ -25,8 +23,11 @@ void bignum_add(BigNum * r , const BigNum * a, const BigNum * b) {
     r->size = max_size;
     u_int64_t carry = 0;
     for (int i = 0; i < max_size; i++) {
-        uint64_t sum = a->limbs[i] + b->limbs[i] + carry;
-        carry = (sum < a->limbs[i]) ? 1 : 0;  // overflow detected
+        uint64_t ab = a->limbs[i] + b->limbs[i];
+        uint64_t c1 = (ab < a->limbs[i]) ? 1 : 0;
+        uint64_t sum = ab + carry;
+        uint64_t c2 = (sum < ab) ? 1 : 0;
+        carry = c1 | c2;
         r->limbs[i] = sum;
     }
     if (carry) {
@@ -41,18 +42,25 @@ void bignum_sub(BigNum * r , const BigNum * a, const BigNum * b) {
     r->size = max_size;
     int borrow = 0;
     for (int i = 0; i < max_size; i++) {
-        uint64_t bi = (i < b->size) ? b->limbs[i] : 0;
-        uint64_t sub = a->limbs[i] - bi - borrow;
-        borrow = (a->limbs[i] < bi + borrow) ? 1 : 0;
-        r->limbs[i] = sub;
+        // uint64_t bi = (i < b->size) ? b->limbs[i] : 0;
+        // uint64_t sub = a->limbs[i] - bi - borrow;
+        // borrow = (a->limbs[i] < bi + borrow) ? 1 : 0;
+        // r->limbs[i] = sub;
+        uint64_t ab = a->limbs[i] - b->limbs[i];
+        uint64_t c1 = (ab > a->limbs[i]) ? 1 : 0;
+        uint64_t sum = ab - borrow;
+        uint64_t c2 = (sum > ab) ? 1 : 0;
+        borrow = c1 | c2;
+        r->limbs[i] = sum;
     }
     bignum_trim(r);
 }
 
 void bignum_mul(BigNum * r , const BigNum * a, const BigNum * b) {
     if (a->size + b->size > MAX_LIMBS) {
-        printf("Overflow Error");
-        return;
+        fprintf(stderr, "FATAL bignum_mul overflow: %d + %d > %d\n",
+                a->size, b->size, MAX_LIMBS);
+        abort();   // crash loudly
     }
 
     memset(r->limbs, 0, sizeof(r->limbs));
@@ -86,7 +94,7 @@ int bignum_cmp(const BigNum * a, const BigNum * b) {
 void bignum_from_hex(BigNum *r , const char * hex) {
     int len = strlen(hex);
     r->size = 0;
-    for (int i = len ; i > 0 && r->size < 16 ; i-=16) {
+    for (int i = len ; i > 0 && r->size < MAX_LIMBS ; i-=16) {
         int start = (i - 16 < 0) ? 0 : i-16;
         int chunk = i - start;
         char buf[17] = {0};
@@ -97,7 +105,7 @@ void bignum_from_hex(BigNum *r , const char * hex) {
             printf("String error");
             return;
         }else {
-            printf("Conversation failed at - %s\n"  , end);
+            //printf("Conversation failed at - %s\n"  , end);
         }
     }
 }
@@ -111,6 +119,18 @@ void bignum_to_hex(const BigNum * r, char * hex) {
         snprintf(buffer , sizeof(buffer) , "%016" PRIx64, r->limbs[i]);
         strcat(hex, buffer);
     }
+}
+
+void bignum_from_bytes(BigNum *r , const uint8_t *raw , int len) {
+    memset(r->limbs, 0, sizeof(r->limbs));
+    r->size = (len + 7) / 8;
+
+    for (int i = 0 ; i<len ; i++) {
+        int limb_idx = i / 8;
+        int limb_offset = i % 8;
+        r->limbs[limb_idx] |= (uint64_t)raw[i] << (limb_offset * 8);
+    }
+    bignum_trim(r);
 }
 
 void bignum_print(const BigNum *r) {
