@@ -84,7 +84,7 @@ void test_mul() {
     a = (BigNum){ .limbs = {0xDEADBEEF}, .size = 1 };
     b = (BigNum){ .limbs = {0xCAFEBABE}, .size = 1 };
     bignum_mul(&r, &a, &b);
-    check_hex(&r, "00000000a97c5b6a5765e942", "0xDEADBEEF * 0xCAFEBABE");
+    check_hex(&r, "b092ab7b88cf5b62", "0xDEADBEEF * 0xCAFEBABE");
     // python: hex(0xDEADBEEF * 0xCAFEBABE) → 0xa97c5b6a5765e942
 
     // multiply by zero
@@ -160,10 +160,34 @@ void test_mod() {
     check_hex(&r, "0000000000000036", "256 mod 101 = 54");
 }
 
+void test_barrett() {
+    printf("\n[barrett]\n");
+
+    BigNum m = { .limbs = {101}, .size = 1 };
+    BarrettCtx ctx;
+    barrett_precompute(&ctx, &m);
+
+    // 256 mod 101 = 54
+    BigNum a = { .limbs = {256}, .size = 1 };
+    BigNum r;
+    bignum_barrett_mod(&r, &a, &ctx);
+    check_hex(&r, "0000000000000036", "256 mod 101 = 54");
+
+    // 9604 mod 101 = 9  (from your RSA exercise, step 5)
+    a = (BigNum){ .limbs = {9604}, .size = 1 };
+    bignum_barrett_mod(&r, &a, &ctx);
+    check_hex(&r, "0000000000000009", "9604 mod 101 = 9");
+
+    // the milestone: 2^79 mod 101 = 42
+    BigNum base = { .limbs = {2},  .size = 1 };
+    BigNum exp  = { .limbs = {79}, .size = 1 };
+    mod_exp_barrett(&r, &base, &exp, &ctx);
+    check_hex(&r, "000000000000002a", "2^79 mod 101 = 42");
+}
+
 // ── the real milestone: 2^79 mod 101 = 42 ────────────────────
 // this requires modexp which you haven't written yet
 // leaving the skeleton so you can uncomment it after layer 2
-/*
 void test_modexp() {
     printf("\n[modexp]\n");
     BigNum base = { .limbs = {2},   .size = 1 };
@@ -173,7 +197,6 @@ void test_modexp() {
     modexp(&r, &base, &exp, &mod);
     check_hex(&r, "000000000000002a", "2^79 mod 101 = 42");
 }
-*/
 
 // ── main ──────────────────────────────────────────────────────
 int main(void) {
@@ -183,6 +206,8 @@ int main(void) {
     test_mul();
     test_cmp();
     test_mod();
+    test_barrett();
+    test_modexp();
 
     printf("\n%d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

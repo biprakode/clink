@@ -155,6 +155,181 @@ void bignum_rshift(BigNum *a, int n) {
     }
 }
 
+
+void bignum_shr(BigNum *r , BigNum *a , int n) {
+    bignum_copy(r , a);
+    int limb_shift = n/64;
+    int bit_shift = n%64;
+
+    if (limb_shift) {
+        for (int i = 0 ; i<r->size - limb_shift; i++) {
+            r->limbs[i] = r->limbs[limb_shift+i];
+        }
+        for (int i = r->size - limb_shift; i<r->size; i++) {
+            r->limbs[i] = 0;
+        }
+        r->size = (r->size > limb_shift) ? r->size - limb_shift : 1;
+    }
+
+    if (bit_shift) {
+        bignum_rshift(r , bit_shift);
+    }
+    bignum_trim(r);
+}
+
+void bignum_shl(BigNum *r , BigNum *a , int n) {
+    bignum_copy(r , a);
+    int limb_shift = n/64;
+    int bit_shift = n%64;
+    if (limb_shift) {
+        for (int i = r->size - 1; i >= 0; i--) {
+            r->limbs[i + limb_shift] = r->limbs[i];
+        }
+        for (int i = 0; i < limb_shift; i++) {
+            r->limbs[i] = 0;
+        }
+        r->size = r->size + limb_shift;
+    }
+    if (bit_shift) {
+        bignum_lshift(r , bit_shift);
+    }
+}
+
+int bignum_bit_set(const BigNum * r, int bit_index) {
+    int bit_len = bit_index / 64;
+    int bit_offset = bit_index % 64;
+    if (bit_len > r->size) return -1;
+    return r->limbs[bit_len] >> bit_offset & 1;
+}
+
+int bignum_bit_len(BigNum * r) {
+    bignum_trim(r);
+    if (r->size == 0) return 0;
+    int bits = r->size * 64;
+    uint64_t last_limb = r->limbs[r->size - 1];
+    while (last_limb == 0 && bits > 0) { bits--; }
+    if (last_limb == 0) return 0;
+    return (r->size - 1) * 64 + (64 - __builtin_clzll(last_limb));
+}
+
+void modexp(BigNum *r, const BigNum *base, BigNum *exp, const BigNum *m) {
+    BigNum res , temp;
+    memset(res.limbs, 0, sizeof(res.limbs));
+    res.limbs[0] = 1;
+    res.size = 1;
+
+    int total_bits = bignum_bit_len(exp);
+    for (int i = total_bits - 1; i >= 0; i--) {
+        bignum_mul(&temp, &res, &res);      // temp = res^2
+        bignum_mod(&res, &temp, m);         // res  = temp mod m
+
+        if (bignum_bit_set(exp, i)) {
+            bignum_mul(&temp, &res, base);  // temp = res * base
+            bignum_mod(&res, &temp, m);     // res  = temp mod m
+        }
+    }
+    bignum_copy(r, &res);
+}
+
+void bignum_div(BigNum *q , BigNum *r , BigNum *a , BigNum *b) {
+    memset(q->limbs, 0, sizeof(q->limbs));
+    q->size = 1;
+    memset(r->limbs, 0, sizeof(r->limbs));
+    r->size = 1;
+
+    int total_bits = bignum_bit_len(a);
+    for (int i = total_bits - 1; i >= 0; i--) {
+        // rem = rem << 1
+        bignum_lshift(r , 1);
+
+        // copy bit i of a into LSB of rem
+        if (bignum_bit_set(a , i)) {
+            r->limbs[0] |= 1;
+        }
+
+        // if rem >= b: rem -= b, set bit i of quotient
+        if (bignum_cmp(r, b) >= 0) {
+            bignum_sub(r, r, b);
+            int li = i / 64;
+            int bi = i % 64;
+            q->limbs[li] |= (uint64_t)1 << bi;
+            if (li + 1 > q->size) q->size = li + 1;
+        }
+    }
+    bignum_trim(r);
+    bignum_trim(q);
+}
+
+void barrett_precompute(BarrettCtx *ctx, BigNum *m) {
+    bignum_copy(&ctx->m , m);
+    ctx->k = bignum_bit_len(m);
+
+    // build 2^(2k) — just the number 1 shifted left by 2k bits
+    BigNum power;
+    memset(power.limbs, 0, sizeof(power.limbs));
+    power.limbs[0] = 1;
+    power.size = 1;
+    bignum_shl(&power, &power, 2 * ctx->k);
+
+    BigNum rem;
+    bignum_div(&ctx->mu , &rem , &power, m);
+}
+
+void bignum_barrett_mod(BigNum *r , BigNum *a , const BarrettCtx *ctx) {
+    if (bignum_cmp(a , &ctx->m) == -1) {
+        bignum_copy(r , a);
+        return;
+    }
+
+    int k = ctx->k;
+    //q1 = floor(a / 2^(k-1))
+    BigNum q1;
+    bignum_shr(&q1, a, k - 1);
+
+    //q2 = q1 * mu = a * 2^(k+1) / m
+    BigNum q2;
+    bignum_mul(&q2, &q1, &ctx->mu);
+
+    //q3 = floor(q2 / 2^(k+1)) = floor(a / m)
+    BigNum q3;
+    bignum_shr(&q3, &q2, k + 1);
+
+    //r = a - q3 * m
+    BigNum q3m;
+    bignum_mul(&q3m, &q3, &ctx->m);
+    bignum_sub(r, a, &q3m);
+
+    int corrections = 0;
+    while (bignum_cmp(r, &ctx->m) >= 0) {
+        bignum_sub(r, r, &ctx->m);
+        corrections++;
+        if (corrections > 2) {
+            printf("barrett_mod: correction overflow\n");
+            break;
+        }
+    }
+}
+
+
+void mod_exp_barrett(BigNum *r , BigNum *base , BigNum *exp , BarrettCtx *ctx) {
+    BigNum res;
+    memset(res.limbs, 0, sizeof(res.limbs));
+    res.limbs[0] = 1;
+    res.size = 1;
+
+    int total_bits = bignum_bit_len((BigNum *)exp);
+    for (int i = total_bits - 1; i >= 0; i--) {
+        BigNum temp;
+        bignum_mul(&temp, &res, &res);
+        bignum_barrett_mod(&res, &temp, ctx);
+        if (bignum_bit_set(exp , i)) {
+            bignum_mul(&temp, &res, base);
+            bignum_barrett_mod(&res, &temp, ctx);
+        }
+    }
+    bignum_copy(r , &res);
+}
+
 void bignum_mod(BigNum * r , const BigNum * a, const BigNum * b) {
     if ( bignum_cmp(a , b) == -1) {
         bignum_copy(r , a);
