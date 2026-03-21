@@ -28,6 +28,7 @@ void bignum_from_hex(BigNum *r, const char *hex);
 void bignum_to_hex(const BigNum *r, char *hex);
 void bignum_print(const BigNum *r);
 void bignum_from_bytes(BigNum *r , const uint8_t *raw , int len);
+uint8_t *bignum_to_bytes(const BigNum * r, size_t *len);
 
 /* --- Comparison & Information --- */
 int bignum_cmp(const BigNum *a, const BigNum *b);

@@ -133,6 +133,29 @@ void bignum_from_bytes(BigNum *r , const uint8_t *raw , int len) {
     bignum_trim(r);
 }
 
+uint8_t *bignum_to_bytes(const BigNum *r, size_t *len) {
+    // compute byte count — trim trailing zero bytes from top limb
+    *len = r->size * 8;
+    if (r->size > 0) {
+        uint64_t top = r->limbs[r->size - 1];
+        int top_bytes = 8;
+        while (top_bytes > 1 && ((top >> ((top_bytes - 1) * 8)) & 0xFF) == 0) {
+            top_bytes--;
+        }
+        *len = (r->size - 1) * 8 + top_bytes;
+    }
+    if (*len == 0) *len = 1;
+
+    uint8_t *out = (uint8_t *)malloc(*len);
+    // extract bytes in little-endian order (matches bignum_from_bytes)
+    for (size_t i = 0; i < *len; i++) {
+        int limb_idx = i / 8;
+        int limb_offset = i % 8;
+        out[i] = (uint8_t)(r->limbs[limb_idx] >> (limb_offset * 8));
+    }
+    return out;
+}
+
 void bignum_print(const BigNum *r) {
     char buffer[17];
     printf("0x");

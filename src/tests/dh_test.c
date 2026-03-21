@@ -2,8 +2,8 @@
 // Created by biprarshi on 20/03/2026.
 //
 
-#include "bignum.h"
-#include "dh.h"
+#include "../bignum.h"
+#include "../dh.h"
 
 #include <stdio.h>
 

@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include "bignum.h"
+#include "../bignum.h"
 
 // ── test harness ──────────────────────────────────────────────
 static int tests_run    = 0;
