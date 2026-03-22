@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MAX_LIMBS 128
+#define MAX_LIMBS 256
 
 typedef struct {
     uint64_t limbs[MAX_LIMBS];

@@ -172,11 +172,12 @@ void aes256_ctr(const uint8_t key[32] , const uint8_t iv[16] , const uint8_t *in
         // encrypt the counter to produce a 16-byte keystream block
         uint8_t keystream[16];
         aes256_block_encrypt(key , counter , keystream);
-        size_t block_len = (len - offset < 16) ? (len - offset) : (16 - offset); // handle last block maybe < 16 bytes
+        // bytes remaining in this block — full 16 except possibly the last
+        size_t block_len = (len - offset < 16) ? (len - offset) : 16;
 
-        // XOR keystream with plaintext
+        // XOR keystream with plaintext (not counter — keystream is the encrypted counter)
         for (size_t i = 0; i<block_len; i++) {
-            out[offset + i] = in[offset + i] ^ counter[i];
+            out[offset + i] = in[offset + i] ^ keystream[i];
         }
 
         offset += block_len;

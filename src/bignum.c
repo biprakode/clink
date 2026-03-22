@@ -12,19 +12,27 @@ void bignum_trim(BigNum *r) {
 }
 
 void bignum_copy(BigNum * r , const BigNum * a) {
-    r->size = a->size;
-    for (int i = 0 ; i < a->size ; i++) {
-        r->limbs[i] = a->limbs[i];
+    if (r != a) {
+        r->size = a->size;
+        for (int i = 0 ; i < a->size ; i++) {
+            r->limbs[i] = a->limbs[i];
+        }
+    }
+    // zero upper limbs — prevents garbage from leaking into add/sub
+    for (int i = r->size ; i < MAX_LIMBS ; i++) {
+        r->limbs[i] = 0;
     }
 }
 
 void bignum_add(BigNum * r , const BigNum * a, const BigNum * b) {
     const int max_size = a->size > b->size ? a->size : b->size;
     r->size = max_size;
-    u_int64_t carry = 0;
+    uint64_t carry = 0;
     for (int i = 0; i < max_size; i++) {
-        uint64_t ab = a->limbs[i] + b->limbs[i];
-        uint64_t c1 = (ab < a->limbs[i]) ? 1 : 0;
+        uint64_t ai = (i < a->size) ? a->limbs[i] : 0;
+        uint64_t bi = (i < b->size) ? b->limbs[i] : 0;
+        uint64_t ab = ai + bi;
+        uint64_t c1 = (ab < ai) ? 1 : 0;
         uint64_t sum = ab + carry;
         uint64_t c2 = (sum < ab) ? 1 : 0;
         carry = c1 | c2;
@@ -42,12 +50,10 @@ void bignum_sub(BigNum * r , const BigNum * a, const BigNum * b) {
     r->size = max_size;
     int borrow = 0;
     for (int i = 0; i < max_size; i++) {
-        // uint64_t bi = (i < b->size) ? b->limbs[i] : 0;
-        // uint64_t sub = a->limbs[i] - bi - borrow;
-        // borrow = (a->limbs[i] < bi + borrow) ? 1 : 0;
-        // r->limbs[i] = sub;
-        uint64_t ab = a->limbs[i] - b->limbs[i];
-        uint64_t c1 = (ab > a->limbs[i]) ? 1 : 0;
+        uint64_t ai = (i < a->size) ? a->limbs[i] : 0;
+        uint64_t bi = (i < b->size) ? b->limbs[i] : 0;
+        uint64_t ab = ai - bi;
+        uint64_t c1 = (ab > ai) ? 1 : 0;
         uint64_t sum = ab - borrow;
         uint64_t c2 = (sum > ab) ? 1 : 0;
         borrow = c1 | c2;
@@ -92,20 +98,19 @@ int bignum_cmp(const BigNum * a, const BigNum * b) {
 }
 
 void bignum_from_hex(BigNum *r , const char * hex) {
+    memset(r->limbs, 0, sizeof(r->limbs));
     int len = strlen(hex);
     r->size = 0;
     for (int i = len ; i > 0 && r->size < MAX_LIMBS ; i-=16) {
         int start = (i - 16 < 0) ? 0 : i-16;
         int chunk = i - start;
         char buf[17] = {0};
-        memccpy(buf , hex + start, chunk, 16);
+        memcpy(buf , hex + start, chunk);
         char *end;
-        r->limbs[r->size++] = (u_int64_t)strtoull(buf, &end, 16);
-        if (end == hex) {
+        r->limbs[r->size++] = (uint64_t)strtoull(buf, &end, 16);
+        if (end == buf) {
             printf("String error");
             return;
-        }else {
-            //printf("Conversation failed at - %s\n"  , end);
         }
     }
 }
@@ -205,13 +210,19 @@ void bignum_shr(BigNum *r , BigNum *a , int n) {
     int bit_shift = n%64;
 
     if (limb_shift) {
-        for (int i = 0 ; i<r->size - limb_shift; i++) {
+        if (limb_shift >= r->size) {
+            // shift exceeds number — result is zero
+            memset(r->limbs, 0, sizeof(r->limbs));
+            r->size = 1;
+            return;
+        }
+        for (int i = 0 ; i < r->size - limb_shift; i++) {
             r->limbs[i] = r->limbs[limb_shift+i];
         }
-        for (int i = r->size - limb_shift; i<r->size; i++) {
+        for (int i = r->size - limb_shift; i < r->size; i++) {
             r->limbs[i] = 0;
         }
-        r->size = (r->size > limb_shift) ? r->size - limb_shift : 1;
+        r->size = r->size - limb_shift;
     }
 
     if (bit_shift) {
